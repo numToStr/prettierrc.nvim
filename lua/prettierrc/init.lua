@@ -1,5 +1,5 @@
 -- TODO
--- [ ] support comment in yaml/toml
+-- [x] support comment in yaml/toml
 -- [ ] only apply settings to child and sibling files of config
 -- [x] windows support (probably done)
 -- [ ] caching
@@ -18,7 +18,8 @@ local P = {}
 local setting = {}
 
 local is_win = uv.os_uname().sysname == 'Windows'
-local yaml_pattern = table.concat({ '%s*(%w+)%s*:?=?%s*"?(.-)"?', is_win and '\r\n' or '\n' })
+local cr = is_win and '\r\n' or '\n'
+local yml_pat = '^%s*(%w+)%s*:?=?%s*"?(.-)"?%s*$'
 local fileformat = { lf = 'unix', crlf = 'dos', cr = 'mac' }
 local files = {
     '.prettierrc',
@@ -83,13 +84,16 @@ end
 ---@return Prettierrc
 local function yaml(file)
     local config = {}
-    for k, v in string.gmatch(file, yaml_pattern) do
-        if v == 'false' then
-            config[k] = false
-        elseif v == 'true' then
-            config[k] = true
-        else
-            config[k] = tonumber(v) or v
+    for line in vim.gsplit(file, cr, true) do
+        if not (line == '' or string.find(line, '^%s*#')) then
+            local k, v = string.match(line, yml_pat)
+            if v == 'false' then
+                config[k] = false
+            elseif v == 'true' then
+                config[k] = true
+            else
+                config[k] = tonumber(v) or v
+            end
         end
     end
     return config
@@ -102,10 +106,10 @@ function P.find_config()
 end
 
 ---Parse prettier configuration into lua object
----@param path string Path to prettierrc file
+---@param path string Path to prettier config
 ---@return Prettierrc
 function P.parse(path)
-    local file = read_file(path)
+    local file = read_file(vim.fs.normalize(path))
     local ok, parsed = pcall(vim.json.decode, file)
     return ok and parsed or yaml(file)
 end
@@ -117,7 +121,7 @@ function P.init(buf)
     if not path then
         return
     end
-    local config = P.parse(vim.fs.normalize(path))
+    local config = P.parse(path)
     for k, v in pairs(config) do
         pcall(setting[k], buf, v, config)
     end
