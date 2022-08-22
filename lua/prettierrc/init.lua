@@ -2,7 +2,7 @@
 -- [x] support comment in yaml/toml
 -- [ ] only apply settings to child and sibling files of config
 -- [x] windows support (probably done)
--- [ ] caching
+-- [x] basic caching
 -- [ ] async file read
 
 local uv = vim.loop
@@ -16,6 +16,7 @@ local bo = vim.bo
 
 local P = {}
 local setting = {}
+local cache = { mtime = -1 }
 
 local is_win = uv.os_uname().sysname == 'Windows'
 local cr = is_win and '\r\n' or '\n'
@@ -70,11 +71,16 @@ end
 
 ---Read file from filesystem
 ---@param path string
----@return string
+---@return string? _ If `nil`, that means file is cached
 local function read_file(path)
     local fd = assert(uv.fs_open(path, 'r', 438))
     local stat = assert(uv.fs_fstat(fd))
-    local data = assert(uv.fs_read(fd, stat.size, 0))
+    local data = nil
+    if not (path == cache.path and stat.mtime.nsec == cache.mtime) then
+        data = assert(uv.fs_read(fd, stat.size, 0))
+        cache.mtime = stat.mtime.nsec
+        cache.path = path
+    end
     assert(uv.fs_close(fd))
     return data
 end
@@ -110,8 +116,13 @@ end
 ---@return Prettierrc
 function P.parse(path)
     local file = read_file(vim.fs.normalize(path))
-    local ok, parsed = pcall(vim.json.decode, file)
-    return ok and parsed or yaml(file)
+    if not file then
+        return cache.config
+    end
+    local ok, json = pcall(vim.json.decode, file)
+    local parsed = ok and json or yaml(file)
+    cache.config = parsed
+    return parsed
 end
 
 ---Configure the plugin
