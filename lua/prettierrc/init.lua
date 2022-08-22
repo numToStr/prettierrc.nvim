@@ -1,0 +1,126 @@
+-- TODO
+-- [ ] support comment in yaml/toml
+-- [ ] only apply settings to child and sibling files of config
+-- [x] windows support (probably done)
+-- [ ] caching
+-- [ ] async file read
+
+local uv = vim.loop
+local bo = vim.bo
+
+---@class Prettierrc
+---@field tabWidth integer
+---@field printWidth integer
+---@field useTabs integer
+---@field endOfLine 'lf'|'cflf'|'cr'|'auto'
+
+local P = {}
+local setting = {}
+
+local is_win = uv.os_uname().sysname == 'Windows'
+local yaml_pattern = table.concat({ '%s*(%w+)%s*:?=?%s*"?(.-)"?', is_win and '\r\n' or '\n' })
+local fileformat = { lf = 'unix', crlf = 'dos', cr = 'mac' }
+local files = {
+    '.prettierrc',
+    '.prettierrc.json',
+    '.prettierrc.yml',
+    '.prettierrc.yaml',
+    '.prettierrc.toml',
+}
+
+---For `tabWidth`
+---@param size integer
+---@param opts Prettierrc
+function setting.tabWidth(buf, size, opts)
+    bo[buf].tabstop = size
+    if opts.useTabs then
+        bo[buf].shiftwidth = 0
+        bo[buf].softtabstop = 0
+    else
+        bo[buf].shiftwidth = size
+        bo[buf].softtabstop = -1
+    end
+end
+
+---For `useTabs`
+---@param yes boolean
+---@param opts Prettierrc
+function setting.useTabs(buf, yes, opts)
+    bo[buf].expandtab = not yes
+    if yes and not opts.tabWidth then
+        bo[buf].shiftwidth = 0
+        bo[buf].softtabstop = 0
+    end
+end
+
+---For `printWidth`
+---@param size integer
+function setting.printWidth(buf, size)
+    bo[buf].textwidth = size
+end
+
+---For `endOfLine`
+---@param val string
+function setting.endOfLine(buf, val)
+    if val ~= 'auto' then
+        bo[buf].fileformat = fileformat[val]
+    end
+end
+
+---Read file from filesystem
+---@param path string
+---@return string
+local function read_file(path)
+    local fd = assert(uv.fs_open(path, 'r', 438))
+    local stat = assert(uv.fs_fstat(fd))
+    local data = assert(uv.fs_read(fd, stat.size, 0))
+    assert(uv.fs_close(fd))
+    return data
+end
+
+---Parse yaml/toml file into lua object
+---@param file any Yaml file
+---@return Prettierrc
+local function yaml(file)
+    local config = {}
+    for k, v in string.gmatch(file, yaml_pattern) do
+        if v == 'false' then
+            config[k] = false
+        elseif v == 'true' then
+            config[k] = true
+        else
+            config[k] = tonumber(v) or v
+        end
+    end
+    return config
+end
+
+---Find prettier config file
+---@return string? path Path to prettier config
+function P.find_config()
+    return vim.fs.find(files, { type = 'file' })[1]
+end
+
+---Parse prettier configuration into lua object
+---@param path string Path to prettierrc file
+---@return Prettierrc
+function P.parse(path)
+    local file = read_file(path)
+    local ok, parsed = pcall(vim.json.decode, file)
+    return ok and parsed or yaml(file)
+end
+
+---Configure the plugin
+---@param buf integer
+function P.init(buf)
+    local path = P.find_config()
+    if not path then
+        return
+    end
+    local config = P.parse(vim.fs.normalize(path))
+    for k, v in pairs(config) do
+        pcall(setting[k], buf, v, config)
+    end
+end
+
+return P
