@@ -125,14 +125,19 @@ function P.parse(path)
     return parsed
 end
 
----Configure the plugin
----@param buf integer
-function P.init(buf)
+---Get the config from `.prettierrc`
+---@return Prettierrc?
+function P.get_config()
     local path = P.find_config()
     if not path then
         return
     end
-    local config = P.parse(path)
+    return P.parse(path)
+end
+
+---Apply the settings to a given buffer
+---@param buf integer
+function P.apply(buf, config)
     for k, v in pairs(config) do
         pcall(setting[k], buf, v, config)
     end
