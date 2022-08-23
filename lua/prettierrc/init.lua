@@ -1,14 +1,13 @@
+---@mod prettierrc Prettierrc.nvim
+
 -- TODO
--- [x] support comment in yaml/toml
 -- [ ] only apply settings to child and sibling files of config
--- [x] windows support (probably done)
--- [x] basic caching
 -- [ ] async file read
 
 local uv = vim.loop
 local bo = vim.bo
 
----@class Prettierrc
+---@class Prettierrc Supported `.prettierrc` options
 ---@field tabWidth integer
 ---@field printWidth integer
 ---@field useTabs integer
@@ -69,22 +68,6 @@ function setting.endOfLine(buf, val)
     end
 end
 
----Read file from filesystem
----@param path string
----@return string? _ If `nil`, that means file is cached
-local function read_file(path)
-    local fd = assert(uv.fs_open(path, 'r', 438))
-    local stat = assert(uv.fs_fstat(fd))
-    local data = nil
-    if not (path == cache.path and stat.mtime.nsec == cache.mtime) then
-        data = assert(uv.fs_read(fd, stat.size, 0))
-        cache.mtime = stat.mtime.nsec
-        cache.path = path
-    end
-    assert(uv.fs_close(fd))
-    return data
-end
-
 ---Parse yaml/toml file into lua object
 ---@param file any Yaml file
 ---@return Prettierrc
@@ -111,16 +94,21 @@ function P.find_config()
     return vim.fs.find(files, { type = 'file' })[1]
 end
 
----Parse prettier configuration into lua object
+---Parse prettier configuration into lua object from the given {path}
 ---@param path string Path to prettier config
 ---@return Prettierrc
 function P.parse(path)
-    local file = read_file(vim.fs.normalize(path))
-    if not file then
+    local fd = assert(uv.fs_open(path, 'r', 438))
+    local stat = assert(uv.fs_fstat(fd))
+    if stat.mtime.nsec == cache.mtime then
+        assert(uv.fs_close(fd))
         return cache.config
     end
+    local file = assert(uv.fs_read(fd, stat.size, 0))
+    assert(uv.fs_close(fd))
     local ok, json = pcall(vim.json.decode, file)
     local parsed = ok and json or yaml(file)
+    cache.mtime = stat.mtime.nsec
     cache.config = parsed
     return parsed
 end
@@ -136,10 +124,13 @@ function P.get_config()
 end
 
 ---Apply the settings to a given buffer
----@param buf integer
+---@param buf integer Buffer ID
+---@param config Prettierrc?
 function P.apply(buf, config)
-    for k, v in pairs(config) do
-        pcall(setting[k], buf, v, config)
+    if config ~= nil then
+        for k, v in pairs(config) do
+            pcall(setting[k], buf, v, config)
+        end
     end
 end
 
