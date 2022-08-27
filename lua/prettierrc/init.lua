@@ -95,12 +95,11 @@ end
 ---@param path string Path to prettier config
 ---@return Prettierrc
 function P.parse(path)
-    local fd = assert(uv.fs_open(path, 'r', 438))
-    local stat = assert(uv.fs_fstat(fd))
+    local stat = assert(uv.fs_stat(path))
     if stat.mtime.nsec == cache.mtime then
-        assert(uv.fs_close(fd))
         return cache.config
     end
+    local fd = assert(uv.fs_open(path, 'r', 438))
     local file = assert(uv.fs_read(fd, stat.size, 0))
     assert(uv.fs_close(fd))
     local ok, json = pcall(vim.json.decode, file)
