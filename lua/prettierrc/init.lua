@@ -1,11 +1,11 @@
 ---@mod prettierrc Prettierrc.nvim
 
 -- TODO
+-- [ ] hidden and excluded files/folders
 -- [ ] only apply settings to child and sibling files of config
 -- [ ] async file read
 
-local uv = vim.loop
-local bo = vim.bo
+local uv, bo = vim.loop, vim.bo
 
 ---@class Prettierrc Supported `.prettierrc` options
 ---@field tabWidth integer
@@ -13,11 +13,8 @@ local bo = vim.bo
 ---@field useTabs integer
 ---@field endOfLine 'lf'|'cflf'|'cr'|'auto'
 
-local P = {}
-local setting = {}
-local cache = { mtime = -1 }
-
-local is_win = uv.os_uname().sysname == 'Windows'
+local P, setting, cache = {}, {}, { mtime = -1 }
+local is_win = string.find(uv.os_uname().sysname, '^Win') ~= nil
 local cr = is_win and '\r\n' or '\n'
 local yml_pat = '^%s*(%w+)%s*:?=?%s*"?(.-)"?%s*$'
 local fileformat = { lf = 'unix', crlf = 'dos', cr = 'mac' }
