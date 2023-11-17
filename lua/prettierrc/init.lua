@@ -26,7 +26,8 @@ local files = {
     '.prettierrc.toml',
 }
 
----For `tabWidth`
+---For `tabWidth` and updates |tabstop|, |shiftwidth|, |softtabstop|
+---@param buf integer Buffer ID
 ---@param size integer
 ---@param opts Prettierrc
 function setting.tabWidth(buf, size, opts)
@@ -40,7 +41,8 @@ function setting.tabWidth(buf, size, opts)
     end
 end
 
----For `useTabs`
+---For `useTabs` and updates |expandtab|, |shiftwidth|, |softtabstop|
+---@param buf integer Buffer ID
 ---@param yes boolean
 ---@param opts Prettierrc
 function setting.useTabs(buf, yes, opts)
@@ -51,13 +53,15 @@ function setting.useTabs(buf, yes, opts)
     end
 end
 
----For `printWidth`
+---For `printWidth` and updates |textwidth|
+---@param buf integer Buffer ID
 ---@param size integer
 function setting.printWidth(buf, size)
     bo[buf].textwidth = size
 end
 
----For `endOfLine`
+---For `endOfLine` and updates |fileformat|
+---@param buf integer Buffer ID
 ---@param val string
 function setting.endOfLine(buf, val)
     if val ~= 'auto' then
@@ -88,7 +92,13 @@ end
 ---Find prettier config file
 ---@return string? path Path to prettier config
 function P.find_config()
-    return vim.fs.find(files, { type = 'file' })[1]
+    return vim.fs.find(files, {
+        type = 'file',
+        ignore = function(path)
+            return (path:find('node_.-$') or path:find('%.git.-$') or path:find('%.next$'))
+                or not path:find('.*%..-rc.*$')
+        end,
+    })[1]
 end
 
 ---Parse prettier configuration into lua object from the given {path}
